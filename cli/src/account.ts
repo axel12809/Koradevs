@@ -6,6 +6,7 @@ import { CliError } from './args.js';
 import { readConfig, serverUrl, writeConfig } from './config.js';
 import { githubDeviceFlow } from './device-flow.js';
 import { saveRequest } from './store.js';
+import { openSalle } from './salle.js';
 import { waitForHelper } from './wait.js';
 
 export async function login(options: { dev?: string; server?: string }): Promise<number> {
@@ -88,7 +89,14 @@ const STAGE_TEXT: Record<RadarStage, string> = {
 };
 
 /** Waits in the terminal until a helper accepts. Ctrl+C closes the request. */
-export async function waitHelper(sent: CreatedRequest): Promise<number> {
+/** Where the failing command ran: needed to apply corrections and relaunch it from the Salle SOS. */
+export interface LocalRun {
+  command: string[];
+  cwd: string;
+  root: string;
+}
+
+export async function waitHelper(sent: CreatedRequest, local?: LocalRun): Promise<number> {
   const config = readConfig();
   const server = serverUrl(config);
   console.log(pc.bold('\nRecherche d’un aidant…') + pc.dim(' (Ctrl+C pour annuler)'));
@@ -112,17 +120,22 @@ export async function waitHelper(sent: CreatedRequest): Promise<number> {
       });
   };
   process.once('SIGINT', cancel);
+  let helper;
   try {
-    const helper = await waiting.helper;
-    console.log(pc.green(`\n✔ ${helper.name ?? helper.login} (@${helper.login}) a accepté ta demande !`));
-    console.log(pc.dim('  La salle SOS (code et terminal partagés) arrive à l’étape 4.'));
-    return 0;
+    helper = await waiting.helper;
   } catch (error) {
     console.log(pc.yellow(`\n${(error as Error).message}. Ta demande reste visible des aidants.`));
     return 1;
   } finally {
     process.off('SIGINT', cancel);
   }
+  console.log(pc.green(`\n✔ ${helper.name ?? helper.login} (@${helper.login}) a accepté ta demande !`));
+  if (!local || !process.stdin.isTTY) {
+    console.log(pc.dim('  Pas de terminal interactif : la salle SOS reste ouverte dans le navigateur de ton aidant.'));
+    return 0;
+  }
+  const end = await openSalle({ server, token: config.token!, requestId: sent.id, ...local });
+  return end === 'resolue' ? 0 : 1;
 }
 
 /** Sends a validated request; keeps it on disk if the server cannot take it. */

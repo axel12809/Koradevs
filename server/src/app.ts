@@ -9,6 +9,7 @@ import { fetchGithubClient, type GithubClient } from './auth/github.js';
 import type { AppConfig } from './config.js';
 import { HealthController } from './health.controller.js';
 import { RadarService } from './radar/radar.service.js';
+import { SalleService } from './salle/salle.service.js';
 import { PurgeService } from './requests/purge.service.js';
 import { RequestsController } from './requests/requests.controller.js';
 import { RequestsService } from './requests/requests.service.js';
@@ -40,6 +41,7 @@ export class AppModule {
         RequestsService,
         PurgeService,
         RadarService,
+        SalleService,
         SolutionsService,
       ],
     };

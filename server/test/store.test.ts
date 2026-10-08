@@ -69,6 +69,13 @@ function contract(name: string, setup: () => Promise<Store>) {
       expect(await store.closeRequest(b.id, koffi.id)).toBe(false);
       expect(await store.listOpenRequests(t0)).toEqual([]);
       expect((await store.getUser(awa.id))?.login).toBe('awa');
+
+      expect(await store.resolveRequest(a.id, moussa.id, t0)).toBe(false);
+      const helperId = (await store.getRequest(a.id, t0))!.helperId!;
+      expect(await store.resolveRequest(a.id, helperId, t0)).toBe(true);
+      expect(await store.getRequest(a.id, t0)).toBeNull();
+      expect(await store.resolveRequest(a.id, koffi.id, t0)).toBe(false);
+      expect(await store.purgeExpired(t0)).toMatchObject({ requests: 1 });
     });
 
     it('stores helper techs and finds solution candidates', async () => {
@@ -96,7 +103,7 @@ describe.skipIf(!url)('PostgreSQL', () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url });
     await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    expect(await migrate(pool)).toEqual(['001_init.sql', '002_radar_fiches.sql']);
+    expect(await migrate(pool)).toEqual(['001_init.sql', '002_radar_fiches.sql', '003_salle.sql']);
     expect(await migrate(pool)).toEqual([]);
   });
   afterAll(async () => {

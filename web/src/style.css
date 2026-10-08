@@ -33,3 +33,29 @@ button.big.off { background: #30363d; }
 .error-line { display: block; margin-top: 10px; padding: 10px; background: #0d1117; border-radius: 6px; color: #ff7b72; white-space: pre-wrap; word-break: break-word; }
 .hint { color: #8b949e; font-size: 0.9rem; }
 .error { color: #f85149; }
+
+/* Salle SOS */
+.salle { max-width: 1400px; margin: 0 auto; padding: 16px; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+.salle header { margin-bottom: 12px; }
+button.resolve { background: #8957e5; }
+.card.summary { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; margin-bottom: 12px; }
+.card.summary .error-line { margin-top: 0; }
+.salle-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 12px; }
+.salle-grid .card { margin: 0; min-height: 0; display: flex; flex-direction: column; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.tab { background: #21262d; color: #c9d1d9; font-weight: 400; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.tab.on { background: #1f6feb; color: #fff; }
+.editor { flex: 1; min-height: 240px; overflow: hidden; border: 1px solid #30363d; border-radius: 6px; }
+.editor .cm-editor { height: 100%; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.side h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.run { margin-left: auto; font-size: 0.8rem; color: #8b949e; font-weight: 400; }
+.run.on { color: #d29922; }
+.terminal { flex: 1; min-height: 120px; margin: 0 0 12px; padding: 10px; background: #010409; border-radius: 6px; overflow: auto; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; }
+.chat { flex: 1; min-height: 120px; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.msg { margin: 0; padding: 6px 10px; border-radius: 8px; background: #21262d; white-space: pre-wrap; word-break: break-word; }
+.msg.aidant { background: #12261e; }
+.msg.systeme { background: none; color: #8b949e; font-size: 0.85rem; padding: 0 4px; }
+.chat-form { display: flex; gap: 6px; grid-template-columns: none; }
+.chat-form input { flex: 1; }
+@media (max-width: 900px) { .salle { height: auto; } .salle-grid { grid-template-columns: 1fr; } }

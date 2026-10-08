@@ -14,6 +14,8 @@ export interface AppConfig {
   publicAfterSeconds: number;
   /** How often the Radar re-checks open requests (0 = never, tests call tick()). */
   radarTickMs: number;
+  /** Web interface, used to link to the Salle SOS from the terminal. */
+  webUrl: string;
 }
 
 function numberFrom(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -35,5 +37,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     widenAfterSeconds: numberFrom(env.SOS_WIDEN_AFTER_SECONDS, 120, 0, 3600),
     publicAfterSeconds: numberFrom(env.SOS_PUBLIC_AFTER_SECONDS, 300, 0, 86400),
     radarTickMs: numberFrom(env.SOS_RADAR_TICK_MS, 3000, 0, 60000),
+    webUrl: (env.SOS_WEB_URL || 'http://localhost:5173').replace(/\/+$/, ''),
   };
 }
