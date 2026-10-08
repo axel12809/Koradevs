@@ -92,6 +92,13 @@ export class MemoryStore implements Store {
     return true;
   }
 
+  async resolveRequest(id: string, userId: string, now: Date): Promise<boolean> {
+    const r = this.requests.get(id);
+    if (!r || r.status !== 'acceptee' || r.expiresAt <= now || (r.userId !== userId && r.helperId !== userId)) return false;
+    Object.assign(r, { status: 'resolue', expiresAt: now });
+    return true;
+  }
+
   async getUser(id: string): Promise<User | null> {
     const user = this.users.get(id);
     return user ? structuredClone(user) : null;

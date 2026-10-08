@@ -14,6 +14,7 @@ import type { AppConfig } from '../config.js';
 import type { Store, StoredRequest, User } from '../store/types.js';
 import { CLOCK, CONFIG, STORE, type Clock } from '../tokens.js';
 import { RadarService } from '../radar/radar.service.js';
+import { SalleService } from '../salle/salle.service.js';
 import { parseBody } from '../validation.js';
 
 const ignore = ignoreModule.default;
@@ -57,6 +58,7 @@ export class RequestsService {
     @Inject(STORE) private readonly store: Store,
     @Inject(CLOCK) private readonly now: Clock,
     @Inject(RadarService) private readonly radar: RadarService,
+    @Inject(SalleService) private readonly salle: SalleService,
   ) {}
 
   async create(user: User, body: unknown): Promise<CreatedRequest> {
@@ -99,6 +101,7 @@ export class RequestsService {
     if (!stored) throw new NotFoundException('Demande introuvable, ou déjà effacée.');
     if (stored.userId !== user.id) throw new ForbiddenException('Cette demande ne t’appartient pas.');
     await this.store.closeRequest(id, user.id);
+    this.salle.end(id, 'annulee', user.login);
     await this.radar.tick();
   }
 

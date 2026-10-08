@@ -8,6 +8,7 @@ import { AuthService, publicUser } from '../auth/auth.service.js';
 import type { AppConfig } from '../config.js';
 import type { Store, StoredRequest, User } from '../store/types.js';
 import { CLOCK, CONFIG, STORE, type Clock } from '../tokens.js';
+import { SalleService, type SalleConnection } from '../salle/salle.service.js';
 
 const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth'), token: z.string().min(1).max(200) }),
@@ -15,11 +16,23 @@ const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pause') }),
   z.object({ type: z.literal('suivre'), requestId: z.string().uuid() }),
   z.object({ type: z.literal('accepter'), requestId: z.string().uuid() }),
+  z.object({ type: z.literal('rejoindre'), requestId: z.string().uuid(), client: z.enum(['terminal', 'web']) }),
+  z.object({ type: z.literal('yjs'), requestId: z.string().uuid(), update: z.string().min(1).max(200_000) }),
+  z.object({ type: z.literal('message'), requestId: z.string().uuid(), text: z.string().min(1).max(4000) }),
+  z.object({ type: z.literal('proposer'), requestId: z.string().uuid() }),
+  z.object({ type: z.literal('relance'), requestId: z.string().uuid() }),
+  z.object({ type: z.literal('resolu'), requestId: z.string().uuid() }),
+  z.object({ type: z.literal('terminal'), requestId: z.string().uuid(), data: z.string().max(64_000) }),
+  z.object({ type: z.literal('execution'), requestId: z.string().uuid(), state: z.enum(['en-cours', 'terminee']), exitCode: z.number().int().optional() }),
+  z.object({ type: z.literal('reponse'), requestId: z.string().uuid(), path: z.string().min(1).max(500), accepted: z.boolean(), reason: z.string().max(300).optional() }),
+  z.object({ type: z.literal('reponse-relance'), requestId: z.string().uuid(), accepted: z.boolean() }),
 ]);
 
-interface Connection {
+interface Connection extends SalleConnection {
   ws: WebSocket;
   user: User | null;
+  /** Messages of one connection are handled one after the other, in order. */
+  queue: Promise<void>;
   /** null = not available (Radar paused or requester only). */
   tech: string[] | null;
   /** Alerts already sent: request id → stage. */
@@ -51,11 +64,12 @@ export class RadarService implements OnApplicationBootstrap, BeforeApplicationSh
     @Inject(STORE) private readonly store: Store,
     @Inject(CONFIG) private readonly config: AppConfig,
     @Inject(CLOCK) private readonly now: Clock,
+    @Inject(SalleService) private readonly salle: SalleService,
   ) {}
 
   onApplicationBootstrap(): void {
     const server = this.host.httpAdapter.getHttpServer() as Server;
-    this.wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+    this.wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 });
     this.wss.on('connection', (ws) => this.onConnection(ws));
     if (this.config.radarTickMs > 0) {
       this.timer = setInterval(() => void this.tick().catch((e: unknown) => this.logger.error(e)), this.config.radarTickMs);
@@ -98,6 +112,7 @@ export class RadarService implements OnApplicationBootstrap, BeforeApplicationSh
 
   private async refresh(): Promise<void> {
     const now = this.now();
+    this.salle.sweep(now);
     const open = await this.store.listOpenRequests(now);
     const openIds = new Set(open.map((r) => r.id));
     const helpers = [...this.connections].filter((c) => c.user && c.tech);
@@ -147,21 +162,32 @@ export class RadarService implements OnApplicationBootstrap, BeforeApplicationSh
   }
 
   private onConnection(ws: WebSocket): void {
-    const c: Connection = { ws, user: null, tech: null, sent: new Map(), watching: new Set() };
+    const c: Connection = {
+      ws,
+      user: null,
+      queue: Promise.resolve(),
+      tech: null,
+      sent: new Map(),
+      watching: new Set(),
+      send: (message) => this.send(c, message),
+    };
     this.connections.add(c);
     const authTimer = setTimeout(() => {
       if (!c.user) ws.close(4001, 'auth requise');
     }, AUTH_TIMEOUT_MS);
     ws.on('message', (data) => {
-      void this.onMessage(c, data).catch((e: unknown) => {
-        this.logger.error(e);
-        this.send(c, { type: 'erreur', message: 'Erreur interne du serveur.' });
-      });
+      c.queue = c.queue
+        .then(() => this.onMessage(c, data))
+        .catch((e: unknown) => {
+          this.logger.error(e);
+          this.send(c, { type: 'erreur', message: 'Erreur interne du serveur.' });
+        });
     });
     ws.on('close', () => {
       clearTimeout(authTimer);
       const wasHelper = !!c.tech;
       this.connections.delete(c);
+      this.salle.leave(c);
       if (wasHelper) void this.tick().catch((e: unknown) => this.logger.error(e));
     });
   }
@@ -205,11 +231,20 @@ export class RadarService implements OnApplicationBootstrap, BeforeApplicationSh
         const request = await this.store.getRequest(message.requestId, this.now());
         if (!request || request.userId !== user.id) return this.send(c, { type: 'erreur', message: 'Demande introuvable.' });
         c.watching.add(request.id);
+        // The helper may have accepted before the terminal started following the request.
+        const helper = request.status === 'acceptee' && request.helperId ? await this.store.getUser(request.helperId) : null;
+        if (helper) return this.send(c, { type: 'acceptee', requestId: request.id, helper: publicUser(helper) });
         this.lastStatus.delete(request.id);
         return this.tick();
       }
       case 'accepter':
         return this.accept(c, user, message.requestId);
+      case 'rejoindre':
+        return this.salle.join(c, message.requestId, message.client);
+      case 'resolu':
+        return this.salle.resolve(c, message.requestId);
+      default:
+        return this.salle.handle(c, message);
     }
   }
 

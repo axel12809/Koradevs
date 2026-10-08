@@ -163,6 +163,15 @@ export class PgStore implements Store {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async resolveRequest(id: string, userId: string, now: Date): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE requests SET status = 'resolue', resolved_at = $3, expires_at = $3
+       WHERE id = $1 AND status = 'acceptee' AND expires_at > $3 AND (user_id = $2 OR helper_id = $2)`,
+      [id, userId, now],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async getUser(id: string): Promise<User | null> {
     const { rows } = await this.pool.query<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
     return rows[0] ? toUser(rows[0]) : null;

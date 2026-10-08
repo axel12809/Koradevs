@@ -111,7 +111,7 @@ async function main(): Promise<number> {
   }
 
   const sent = await deliver(built.request);
-  if (sent && !args.noWait) await waitHelper(sent);
+  if (sent && !args.noWait) await waitHelper(sent, { command: args.command, cwd, root: collected.root });
   return result.exitCode;
 }
 

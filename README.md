@@ -9,10 +9,9 @@ Projet CADEV 2026. Le concept complet est dans [`docs/sos-dev-concept-v2.pdf`](d
 | Dossier | Rôle | État |
 | --- | --- | --- |
 | `shared/` | Code commun : masquage des secrets, lecture des traces d'erreur, détection de la techno, format de la demande (Zod) | Étape 1 |
-| `cli/` | La commande `sos` : lance ton programme, capture l'erreur, masque les secrets, affiche l'aperçu | Étape 1 |
-| `server/` | API NestJS + PostgreSQL : connexion GitHub, demandes, fiches, Radar temps réel (WebSocket `/ws`) | Étapes 2 et 3 |
-| `web/` | Interface web (Vite + React) : le Radar des aidants | Étape 3 (salle SOS : étape 4) |
-| `web/` | Site Next.js (Radar, Salle SOS, fiches, profil) | Étape 2-3 |
+| `cli/` | La commande `sos` : lance ton programme, capture l'erreur, masque les secrets, affiche l'aperçu, puis fait le pont avec la salle SOS | Étapes 1 et 4 |
+| `server/` | API NestJS + PostgreSQL : connexion GitHub, demandes, fiches, Radar et salle SOS temps réel (WebSocket `/ws`) | Étapes 2 à 4 |
+| `web/` | Interface web (Vite + React) : le Radar des aidants et la salle SOS (CodeMirror + Yjs) | Étapes 3 et 4 |
 | `examples/demo/` | Petit programme qui plante, avec de faux secrets, pour la démo | |
 | `scripts/audit-licenses.mjs` | Audit des licences (règlement, article 6) | |
 
@@ -62,9 +61,22 @@ npm run web      # http://localhost:5173 (le serveur doit tourner sur :4000)
 3. Les aidants de la même techno sont alertés tout de suite, ceux des technos proches après 2 minutes (`SOS_WIDEN_AFTER_SECONDS`), tous les aidants disponibles après 5 minutes (`SOS_PUBLIC_AFTER_SECONDS`, file publique).
 4. Le premier qui clique sur « Accepter » prend la demande ; les autres la voient disparaître, et le terminal du demandeur affiche qui arrive. Ctrl+C dans le terminal annule la demande.
 
-Les alertes ne montrent que la techno, la commande et la ligne d'erreur (déjà masquée). Le code n'est visible que dans la salle SOS (étape 4).
+Les alertes ne montrent que la techno, la commande et la ligne d'erreur (déjà masquée). Le code n'est visible que dans la salle SOS.
 
 Pour une démo rapide : `SOS_WIDEN_AFTER_SECONDS=10 SOS_PUBLIC_AFTER_SECONDS=20 npm run server`.
+
+### La salle SOS (étape 4)
+
+Quand un aidant accepte, il entre directement dans la salle (`/#/salle/<id>`), et `sos` reste ouvert dans le terminal du demandeur : c'est le pont entre la salle et sa machine. Seuls le demandeur et l'aidant qui a accepté peuvent y entrer.
+
+- **Code partagé en direct** : les fichiers de la demande (déjà masqués) s'ouvrent dans un éditeur partagé (CodeMirror + Yjs). Chaque frappe est synchronisée.
+- **Chat**, depuis le navigateur ou depuis le terminal (une ligne tapée dans `sos` part dans le chat). Le serveur masque à nouveau les secrets de chaque message.
+- **Terminal du demandeur en lecture seule** : chaque relance s'affiche dans la salle. `sos` masque les secrets ligne par ligne avant l'envoi, le serveur repasse derrière.
+- **« Envoyer mes corrections »** (aidant) : le demandeur voit le diff de chaque fichier modifié dans son terminal et répond `o/n`. Rien n'est écrit sans « o », et seuls les fichiers partagés, à l'intérieur du projet, peuvent l'être. Les lignes non modifiées gardent leurs vraies valeurs : un `[MASQUÉ:…]` n'est jamais écrit sur le disque (une correction qui modifie une ligne contenant un secret masqué est refusée).
+- **« Demander une relance »** (aidant) : le terminal demande « Entrée pour lancer, n pour refuser ». Aucun code ne s'exécute sans l'accord du demandeur, et jamais sur le serveur.
+- **« Problème résolu »** (ou `/resolu` dans le terminal) : la salle se ferme pour les deux, et le code est effacé du serveur immédiatement. Une annulation, ou l'expiration des 24 h, ferme aussi la salle.
+
+Dans le terminal : `/relance` pour relancer soi-même, `/resolu`, `/quitter` (ou Ctrl+C) pour partir. `SOS_WEB_URL` (défaut `http://localhost:5173`) sert à afficher le lien de la salle dans le terminal.
 
 ### Connexion GitHub
 
@@ -85,6 +97,7 @@ Le mode démo (`sos login --dev <pseudo>`) est actif par défaut hors production
 | `POST /requests/:id/close` | Annuler ma demande |
 | `GET /solutions/search?q=…&tech=…` | Chercher des fiches (public) |
 | WebSocket `/ws` | Radar : `auth`, `disponible`, `pause`, `accepter` (aidant) · `suivre` (demandeur) |
+| WebSocket `/ws` | Salle SOS : `rejoindre`, `yjs`, `message`, `resolu` · `proposer`, `relance` (aidant) · `terminal`, `execution`, `reponse`, `reponse-relance` (terminal du demandeur) |
 
 À la réception, le serveur refait le masquage des secrets (au cas où le CLI serait ancien ou contourné), refuse les fichiers sensibles et les chemins hors du projet, et fixe l'effacement du code à 24 h maximum. Une purge tourne toutes les 10 minutes.
 
@@ -112,12 +125,14 @@ Ce qu'elle fait :
 6. Affiche l'aperçu exact de la demande. Tu peux retirer des fichiers, puis tu valides.
 
 7. Envoie la demande au serveur, puis attend un aidant en direct (`--no-wait` pour ne pas attendre). Si tu n'es pas connecté ou si le serveur est injoignable, elle est gardée dans `~/.sos/demandes/` et tu peux la renvoyer avec `sos send`.
+8. Quand un aidant accepte, reste ouvert et relie ton terminal à la salle SOS (corrections validées par `o/n`, relances sur Entrée, chat).
 
 ## Vérifications
 
 ```bash
 npm run typecheck
 npm test
+npm run build
 npm run audit:licenses
 ```
 

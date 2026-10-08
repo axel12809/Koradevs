@@ -20,7 +20,8 @@ export interface AuthConfigResponse {
   devAuth: boolean;
 }
 
-export type RequestStatus = 'ouverte' | 'acceptee' | 'fermee';
+/** resolue : the room ended with « Problème résolu » (the code is erased at that moment). */
+export type RequestStatus = 'ouverte' | 'acceptee' | 'resolue' | 'fermee';
 
 export interface RequestSummary {
   id: string;
@@ -76,7 +77,19 @@ export type ClientMessage =
   | { type: 'disponible'; tech: string[] }
   | { type: 'pause' }
   | { type: 'suivre'; requestId: string }
-  | { type: 'accepter'; requestId: string };
+  | { type: 'accepter'; requestId: string }
+  // Salle SOS : only the requester and the helper of an accepted request.
+  | { type: 'rejoindre'; requestId: string; client: SalleClient }
+  | { type: 'yjs'; requestId: string; update: string }
+  | { type: 'message'; requestId: string; text: string }
+  | { type: 'proposer'; requestId: string }
+  | { type: 'relance'; requestId: string }
+  | { type: 'resolu'; requestId: string }
+  // Sent by the requester's terminal only.
+  | { type: 'terminal'; requestId: string; data: string }
+  | { type: 'execution'; requestId: string; state: 'en-cours' | 'terminee'; exitCode?: number }
+  | { type: 'reponse'; requestId: string; path: string; accepted: boolean; reason?: string }
+  | { type: 'reponse-relance'; requestId: string; accepted: boolean };
 
 export type ServerMessage =
   | { type: 'bienvenue'; user: PublicUser }
@@ -86,4 +99,60 @@ export type ServerMessage =
   | { type: 'acceptee'; requestId: string; helper: PublicUser }
   | { type: 'prise'; requestId: string; requester: PublicUser }
   | { type: 'fermee'; requestId: string }
-  | { type: 'erreur'; message: string };
+  | { type: 'erreur'; message: string }
+  | { type: 'salle'; salle: SalleState }
+  | { type: 'yjs'; requestId: string; update: string }
+  | { type: 'message'; requestId: string; message: ChatMessage }
+  | { type: 'terminal'; requestId: string; data: string }
+  | { type: 'execution'; requestId: string; state: 'en-cours' | 'terminee'; exitCode: number | null }
+  | { type: 'presence'; requestId: string; members: SalleMember[] }
+  | { type: 'proposition'; requestId: string; by: string }
+  | { type: 'relance-demandee'; requestId: string; by: string }
+  | { type: 'salle-fermee'; requestId: string; raison: 'resolue' | 'annulee' | 'expiree'; by?: string };
+
+/** `terminal` = the `sos` command on the requester's machine; `web` = the browser. */
+export type SalleClient = 'terminal' | 'web';
+export type SalleRole = 'demandeur' | 'aidant';
+
+export interface SalleMember {
+  login: string;
+  role: SalleRole;
+  client: SalleClient;
+}
+
+/** `systeme` messages are written by the server (corrections accepted, relaunches…). */
+export interface ChatMessage {
+  id: number;
+  from: string;
+  role: SalleRole | 'systeme';
+  text: string;
+  at: string;
+}
+
+export interface SalleFile {
+  path: string;
+  line?: number;
+}
+
+export interface SalleState {
+  requestId: string;
+  role: SalleRole;
+  requester: PublicUser;
+  helper: PublicUser;
+  command: string;
+  tech: string[];
+  errorSummary: string;
+  /** Shared files: one Y.Text per path in the Yjs document. */
+  files: SalleFile[];
+  /** Full Yjs document (base64). Clients must start from a fresh Y.Doc. */
+  doc: string;
+  chat: ChatMessage[];
+  /** Terminal output shown read-only in the room (already masked). */
+  terminal: string;
+  running: boolean;
+  lastExitCode: number | null;
+  members: SalleMember[];
+  /** Web page of the room. */
+  url: string;
+  expiresAt: string;
+}

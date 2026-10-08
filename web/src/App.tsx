@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { KNOWN_TECH, type PublicUser, type RadarAlert, type RadarStage, type ServerMessage } from '@sos/shared';
 import { connectRadar, forgetToken, loginDev, logout, me, savedToken } from './api.js';
+// The editor (CodeMirror + Yjs) is only loaded when entering a room.
+const Salle = lazy(() => import('./Salle.js').then((m) => ({ default: m.Salle })));
 
 const STAGE_LABEL: Record<RadarStage, string> = {
   ciblee: 'Ta techno',
   elargie: 'Alerte élargie',
   publique: 'File publique',
 };
+
+const salleFromHash = () => /^#\/salle\/([0-9a-f-]{36})$/i.exec(location.hash)?.[1] ?? null;
 
 function since(iso: string, now: number): string {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
@@ -36,7 +40,7 @@ function Login({ onLogin }: { onLogin: (token: string, user: PublicUser) => void
         <button type="submit">Se connecter</button>
         {error && <p className="error">{error}</p>}
       </form>
-      <p className="hint">La connexion GitHub sur le web arrive avec la salle SOS.</p>
+      <p className="hint">La connexion GitHub sur le web arrive bientôt.</p>
     </main>
   );
 }
@@ -52,6 +56,13 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(Date.now());
   const radar = useRef<ReturnType<typeof connectRadar> | null>(null);
+  const [salle, setSalle] = useState<string | null>(salleFromHash());
+
+  useEffect(() => {
+    const onHash = () => setSalle(salleFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -67,7 +78,7 @@ export function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !user || salle) return;
     const onMessage = (m: ServerMessage) => {
       switch (m.type) {
         case 'bienvenue':
@@ -82,6 +93,7 @@ export function App() {
         case 'prise':
           setTaken({ requestId: m.requestId, requester: m.requester });
           setAlerts((list) => list.filter((a) => a.requestId !== m.requestId));
+          location.hash = `#/salle/${m.requestId}`;
           break;
         case 'erreur':
           setNotice(m.message);
@@ -93,9 +105,26 @@ export function App() {
       setAvailable(false);
     });
     return () => radar.current?.close();
-  }, [token, user]);
+  }, [token, user, salle]);
 
   if (!token || !user) return <Login onLogin={(t, u) => (setToken(t), setUser(u))} />;
+  if (salle) {
+    return (
+      <Suspense fallback={<main className="card narrow">Ouverture de la salle…</main>}>
+        <Salle
+          token={token}
+          user={user}
+          requestId={salle}
+          onLeave={() => {
+            setTaken(null);
+            setAvailable(false);
+            history.replaceState(null, '', location.pathname);
+            setSalle(null);
+          }}
+        />
+      </Suspense>
+    );
+  }
 
   const toggleTech = (t: string) => {
     const next = tech.includes(t) ? tech.filter((x) => x !== t) : [...tech, t];
@@ -147,10 +176,8 @@ export function App() {
       {taken && (
         <section className="card success">
           <h2>Tu as pris la demande de @{taken.requester.login}</h2>
-          <p>Son terminal vient d’être prévenu. La salle SOS (code et terminal partagés) arrive à l’étape 4.</p>
-          <button className="link" onClick={() => setTaken(null)}>
-            Fermer
-          </button>
+          <p>Son terminal vient d’être prévenu.</p>
+          <button onClick={() => (location.hash = `#/salle/${taken.requestId}`)}>Entrer dans la salle SOS</button>
         </section>
       )}
 
