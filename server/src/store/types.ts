@@ -14,7 +14,7 @@ export interface User {
 
 export type UserInput = Omit<User, 'id' | 'createdAt'>;
 
-export type RequestStatus = 'ouverte' | 'acceptee' | 'fermee';
+export type RequestStatus = 'ouverte' | 'acceptee' | 'resolue' | 'fermee';
 
 export interface StoredRequest {
   id: string;
@@ -71,6 +71,8 @@ export interface Store {
   acceptRequest(id: string, helperId: string, now: Date): Promise<StoredRequest | null>;
   /** Closes an open or accepted request of this user. Returns false if there was nothing to close. */
   closeRequest(id: string, userId: string): Promise<boolean>;
+  /** « Problème résolu » by the requester or the helper of an accepted request: the code is erased now. */
+  resolveRequest(id: string, userId: string, now: Date): Promise<boolean>;
   getUser(id: string): Promise<User | null>;
   setHelperTech(userId: string, tech: string[]): Promise<void>;
   getHelperTech(userId: string): Promise<string[]>;

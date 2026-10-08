@@ -1,64 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { AddressInfo } from 'node:net';
-import WebSocket from 'ws';
-import type { ServerMessage } from '@sos/shared';
 import { RadarService } from '../src/radar/radar.service.js';
 import { payload, testApp } from './helpers.js';
+import { Client, flush } from './ws-client.js';
 
 type Ctx = Awaited<ReturnType<typeof testApp>>;
 
-/** A WebSocket client that records every message and lets tests wait for one. */
-class Client {
-  readonly messages: ServerMessage[] = [];
-  private waiters: { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] = [];
-  private readonly ws: WebSocket;
-  readonly opened: Promise<void>;
-
-  constructor(url: string) {
-    this.ws = new WebSocket(url);
-    this.opened = new Promise((resolve) => this.ws.once('open', () => resolve()));
-    this.ws.on('message', (data) => {
-      const m = JSON.parse(String(data)) as ServerMessage;
-      this.messages.push(m);
-      this.waiters = this.waiters.filter((w) => (w.match(m) ? (w.resolve(m), false) : true));
-    });
-  }
-
-  send(m: object) {
-    this.ws.send(JSON.stringify(m));
-  }
-
-  next<T extends ServerMessage['type']>(type: T, match: (m: Extract<ServerMessage, { type: T }>) => boolean = () => true) {
-    const test = (m: ServerMessage) => m.type === type && match(m as Extract<ServerMessage, { type: T }>);
-    const found = this.messages.find(test);
-    if (found) {
-      this.messages.splice(this.messages.indexOf(found), 1);
-      return Promise.resolve(found as Extract<ServerMessage, { type: T }>);
-    }
-    return new Promise<Extract<ServerMessage, { type: T }>>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`pas de message « ${type} »`)), 2000);
-      this.waiters.push({
-        match: test,
-        resolve: (m) => {
-          clearTimeout(timer);
-          this.messages.splice(this.messages.indexOf(m), 1);
-          resolve(m as Extract<ServerMessage, { type: T }>);
-        },
-      });
-    });
-  }
-
-  has(type: ServerMessage['type']) {
-    return this.messages.some((m) => m.type === type);
-  }
-
-  close() {
-    this.ws.close();
-  }
-}
-
-const flush = () => new Promise((resolve) => setTimeout(resolve, 50));
 
 describe('Radar temps réel', () => {
   let ctx: Ctx;
@@ -132,6 +80,18 @@ describe('Radar temps réel', () => {
     await tick();
     expect((await py.next('alerte')).alert.stage).toBe('publique');
     expect(await watcher.next('statut')).toMatchObject({ stage: 'publique', alerted: 3 });
+  });
+
+  it('tells a requester who starts following after the helper already accepted', async () => {
+    const awa = await helper('awa', ['JavaScript']);
+    const requester = await login('koffi');
+    const id = await ask(requester);
+    await awa.next('alerte');
+    awa.send({ type: 'accepter', requestId: id });
+    await awa.next('prise');
+    const watcher = await connect(requester);
+    watcher.send({ type: 'suivre', requestId: id });
+    expect(await watcher.next('acceptee')).toMatchObject({ requestId: id, helper: { login: 'awa' } });
   });
 
   it('gives the request to the first helper only and tells the requester', async () => {
