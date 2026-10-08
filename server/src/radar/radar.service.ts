@@ -231,6 +231,9 @@ export class RadarService implements OnApplicationBootstrap, BeforeApplicationSh
         const request = await this.store.getRequest(message.requestId, this.now());
         if (!request || request.userId !== user.id) return this.send(c, { type: 'erreur', message: 'Demande introuvable.' });
         c.watching.add(request.id);
+        // The helper may have accepted before the terminal started following the request.
+        const helper = request.status === 'acceptee' && request.helperId ? await this.store.getUser(request.helperId) : null;
+        if (helper) return this.send(c, { type: 'acceptee', requestId: request.id, helper: publicUser(helper) });
         this.lastStatus.delete(request.id);
         return this.tick();
       }

@@ -82,6 +82,18 @@ describe('Radar temps réel', () => {
     expect(await watcher.next('statut')).toMatchObject({ stage: 'publique', alerted: 3 });
   });
 
+  it('tells a requester who starts following after the helper already accepted', async () => {
+    const awa = await helper('awa', ['JavaScript']);
+    const requester = await login('koffi');
+    const id = await ask(requester);
+    await awa.next('alerte');
+    awa.send({ type: 'accepter', requestId: id });
+    await awa.next('prise');
+    const watcher = await connect(requester);
+    watcher.send({ type: 'suivre', requestId: id });
+    expect(await watcher.next('acceptee')).toMatchObject({ requestId: id, helper: { login: 'awa' } });
+  });
+
   it('gives the request to the first helper only and tells the requester', async () => {
     const awa = await helper('awa', ['JavaScript']);
     const moussa = await helper('moussa', ['JavaScript', 'React']);

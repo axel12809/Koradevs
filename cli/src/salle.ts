@@ -26,9 +26,9 @@ const YES = /^(o|oui|y|yes)$/i;
 const CHUNK = 32 * 1024;
 
 function colorDiff(diff: string): string {
-  return diff
-    .split('\n')
-    .slice(2)
+  const lines = diff.split('\n');
+  return lines
+    .slice(Math.max(0, lines.findIndex((line) => line.startsWith('@@'))))
     .map((line) => (line.startsWith('+') ? pc.green(line) : line.startsWith('-') ? pc.red(line) : line.startsWith('@@') ? pc.cyan(line) : pc.dim(line)))
     .join('\n');
 }
